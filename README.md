@@ -1,9 +1,69 @@
-# secKill
-项目针对高并发和商品秒杀整合了SSM框架 在IDEA上创建Maven项目，配置pom.xml和web.xml day01--编写Dao层：首先创建数据库并建表，秒杀商品库存表和成功秒杀明细表 根据数据库中表创建实体类，即秒杀商品信息实体类seckill和秒杀商品状态successkill实体类 再创建实体类对应的mapper接口即dao接口，接口中复写各自的特有方法：如查询商品信息和秒杀商品明细 再建立对应的mapper包存放为dao接口方法提供的sq语句的xml配置 然后建立mybatis-config配置文件，和spring-dao配置文件将spring-mybatis整合 创建测试方法通过单元测试 整合mybatis和spring思路是将sql语句放在sqlsessionfactory中交给spring来管理，将mapper和xml配合起来使用。
+# SSM项目整合实战训练
 
-day02--编写service层：该层主要负责业务逻辑模块的应用设计 站在使用者的角度先设计seckillservice接口，定义方法然后Impl实现这些方法，实现类编写过程中会产生返回数据，为了简化代码提高复用性 再编写Dto类（数据传输对象），该项目中表现为秒杀活动url地址，秒杀商品返回的状态明细等 expection类（异常），该项目中表现为秒杀接口关闭，重复秒杀商品和秒杀失败等异常 为了增加返回执行结果的观赏性，增加了一个枚举类statenum来存放常量数据字段 然后建立spring-service配置文件注入service并结合使用注解方法 创建测试方法通过单元测试
++ Java高并发秒杀API项目--[慕课网免费课程](http://www.imooc.com/course/programdetail/pid/59)
++ 博客地址：http://yiminzheng.coding.me
 
-day03--编写web层：View(页面)>Controller(控制层)>Service(业务逻辑)>Dao(数据访问)>Database(数据库) web层负责编写控制层和view页面，view页面通过前端框架bootstrap编写 首先修改web.xml，引入springmvc的dispatcherservlet配置 整合spring-springmvc之后实现秒杀restful方法用来传输结果 然后编写controller类，建立一个全局ajax请求返回类,返回json类型 进入前端页面先获取系统时间判断秒杀活动是否开启，再决定跳转到对应的页面处理 该层除了前端编写，后端主要实现controller类配置dispatcherservlet参数
+项目效果图：
+秒杀商品列表页：
+![列表页](https://i.imgur.com/uTQeUnL.jpg)
 
-day04--高并发优化：并发性上不去是因为当多个线程访问一行数据时，产生了事务，因此产生写锁，每当一个获取了事务的线程把锁释放，另一个排队线程才能拿到写锁，QPS(Query Per Second每秒查询率)和事务执行的时间有密切关系，事务执行时间越短，并发性越高，这也是要将费时的I/O操作移出事务的原因。本项目高并发发生在详情页、系统时间、地址暴露接口、执行秒杀操作。单独获取系统时间是为秒杀系统优化做铺垫，比如在秒杀还未开始的时候，用户大量刷新秒杀商品详情页面是很正常的情况，这时候秒杀还未开始，大量的请求发送到服务器会造成不必要的负担。将这个详情页放置到CDN中，这样用户在访问该页面时就不需要访问我们的服务器了，起到了降低服务器压力的作用。而CDN中存储的是静态化的详情页和一些静态资源（css，js等），这样我们就拿不到系统的时间来进行秒杀时段的控制，所以我们需要单独设计一个请求来获取我们服务器的系统时间。
-秒杀地址接口返回变化数据，不适合cdn缓存，所以引入redis服务器端缓存，而在热点商品竞争上，同一时间对数据表中的一行数据进行大量的update set操作，在代码中有行级锁，行级锁在commit之后释放，所以简单优化下就是将insert放在update之前，减少了行级锁占用时间；而在判断库存是否更新成功时，存在两步操作，update和客户端确认，这里可以将客户端逻辑放在MySQL服务端，使用存储过程，将update和客户端确认两步合并在一起，减少延迟。
+商品详情页：
+![详情页](https://i.imgur.com/XXMJi2v.jpg)
+
+已登录账号的秒杀已结束：
+![秒杀已结束](https://i.imgur.com/rYhOzPl.jpg)
+
+cookie值保存：
+![cookie值](https://i.imgur.com/AJnhrrC.jpg)
+
+手机号判断：
+![手机号判断](https://i.imgur.com/HWrysKP.jpg)
+
+### day01--DAO层
++ 在IDEA创建Maven项目，在`web.xml`配置servlet版本，在`pom.xml`配置依赖，补全maven项目结构；
++ 在MySQL创建两张表，秒杀商品库存表-`Seckill`，主键是`seckillid`库存商品id和秒杀成功明细表`Successkilled`联合主键商品id和手机号；
++ 在java端根据数据库中表建立对应实体类，并分别创建DAO接口，库存表实体类对应dao接口提供减库存、查询商品的方法接口，明细表对应的dao接口提供插入明细、查询成功秒杀实体并携带商品对象；
++ 基于MyBatis实现dao接口，从两方面：mapper自动实现dao接口并用xml提供sql语句；
++ 配置mybatis全局配置文件`mybatis-congif`，比如表中属性对应的别名，驼峰命名法；
++ 将mybatis和spring整合，创建`spring-dao.xml`配置文件，按顺序配置：数据库->数据库连接池-->mybatis核心sqlsessionfactory-->动态实现dao接口；
+
+## day02--service层
++ DAO层提供接口设计和sql语句，service层提供业务逻辑拼接；
++ 创建`seckillservice`接口，提供四个方法的接口，两个查询商品的方法，第三个是提供秒杀地址接口暴露的方法，第四个是执行秒杀操作返回秒杀结果的方法；
++ 因为方法3，4中数据在web层和service层之间传输，我们再创建dto包，且存在异常exception包存放相应的java类；
++ 实现`service`接口，方法1，2通过调用dao层实体方法得到数据库数据，方法3根据详情页时间判断是否给出接口暴露，url地址经过md5的加密，方法4用到方法3的接口地址，执行事务操作；
++ 方法4返回数据字典常量的结果，为了代码美好，提供枚举类封装结果；
++ 然后将service托管到spring，配置xml文件加载第三方类库，包扫描`package-scan`带注解的java类注入到spring容器中；
++ 因为方法4中执行秒杀操作是对库存的操作，减库存和插入明细是完整事务，这里用spring声明式事务；
+
+## day03--web层
++ 提供前端页面编写--bootstrap+jQuery
++ 前端页面交互流程
+  列表页
+![列表页](https://i.imgur.com/m52mihq.jpg)
+
+  详情页
+![详情页](https://i.imgur.com/x1jOXSR.jpg)
+
++ 根据springmvc整合spring，springmvc围绕handler开发，这里就是我们编写的`seckillcontroller`类,根据业务service接口中方法开发；
++ 方法1，2获取列表页，获取详情页，方法3，4通过ajax请求返回json类型数据，为了统一返回数据类型，新建`seckillresult`存放json封装数据；
++ controller类中每一个方法对应系统中的一个资源url，在springmvc中，映射器，适配器都默认是注解形式，满足restful接口规范；
++ 前端页面开发基于bootstrap框架，详见课程视频内容；
+
+## day04--并发优化
+秒杀系统业务核心--库存问题；秒杀系统热点难点问题--竞争
++ 并发性上不去是因为多线程同时访问一行数据时，产生了事务，执行时会写锁，事务完成或回滚才会释放锁，这导致线程排队；
+ 
+ 秒杀系统高并发发生节点：
+![高并发发生](https://i.imgur.com/eyeyj1r.jpg)
+
++ 详情页的高并发分析：为了争夺商品，用户会提前进入列表页或详情页等待不停刷新，造成服务器压力；
++ 部署时，我们将详情页列表页放在CDN中部署，CDN存放静态资源页面，即不会对服务器造成压力；
++ 因为详情页列表页在CDN中，进不了服务器也就取不到动态时间，无法判断秒杀开启，所以要单独获取系统时间；
++ 地址暴露接口是根据商品id和md5值动态加密生成，也无法放在CDN中，适合服务器端缓存，引入redis，可以组成集群，具有超时穿透和主动更新的优点，减少了服务器的压力；
++ 执行秒杀操作分为插入购买明细`insert`和更新库存`update`，insert可以并行，update是串行，可以先插入再更新，这样减少了网络延迟和GC；
++ 可以将事务操作放在mysql端执行--即存储过程，然后返回操作结果。
++优化总结：
+前端控制--暴露接口，按钮防重复（`insert ignore to`）
+动静态数据分离：CDN缓存，后端缓存(redis)；
+事务竞争优化：减少事务锁时间。      
